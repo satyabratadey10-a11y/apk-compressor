@@ -1,0 +1,58 @@
+name: APK High Compressor
+
+# This trigger allows you to manually run the workflow and input the URL
+on:
+  workflow_dispatch:
+    inputs:
+      apk_url:
+        description: 'Direct Download URL for the APK'
+        required: true
+        type: string
+
+jobs:
+  compress:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Setup the environment
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    # 2. Install 7-Zip (p7zip-full is the Linux package)
+    - name: Install 7-Zip
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y p7zip-full
+
+    # 3. Download the APK using the URL provided in the input
+    - name: Download APK
+      run: |
+        echo "Downloading from: ${{ github.event.inputs.apk_url }}"
+        wget -O input_app.apk "${{ github.event.inputs.apk_url }}"
+        
+        # Check if file was downloaded successfully
+        if [ -f "input_app.apk" ]; then
+          echo "Download successful."
+          ls -lh input_app.apk
+        else
+          echo "Download failed."
+          exit 1
+        fi
+
+    # 4. Compress the APK into a .7z archive
+    # -mx=9 sets compression to 'Ultra' (Maximum possible)
+    # -mmt=on enables multithreading for speed
+    - name: Compress to .7z (Ultra Mode)
+      run: |
+        7z a -t7z compressed_app.7z input_app.apk -mx=9 -mmt=on
+        
+        echo "Compression complete. File sizes:"
+        ls -lh compressed_app.7z
+
+    # 5. Upload the result so you can download it from GitHub
+    - name: Upload Compressed Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Compressed-7z-File
+        path: compressed_app.7z
+        retention-days: 1
