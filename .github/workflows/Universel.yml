@@ -1,0 +1,76 @@
+name: Universal Compression Tournament
+
+on:
+  workflow_dispatch:
+    inputs:
+      apk_url:
+        description: 'Direct Download URL for the APK'
+        required: true
+        type: string
+
+jobs:
+  compress-all:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1. Setup Environment
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. Install Compression Tools (Zip, XZ, Zstd)
+      - name: Install Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zip xz-utils zstd
+
+      # 3. Download APK
+      - name: Download APK
+        run: |
+          echo "Downloading from: ${{ github.event.inputs.apk_url }}"
+          wget -O input_app.apk "${{ github.event.inputs.apk_url }}"
+          
+          if [ ! -f "input_app.apk" ]; then
+            echo "Download failed."
+            exit 1
+          fi
+          
+          # Show original size for comparison
+          echo "Original Size:"
+          ls -lh input_app.apk
+
+      # 4. Create .ZIP (Standard Format)
+      - name: Compress to .ZIP
+        run: |
+          # -9 means maximum compression for Zip
+          zip -9 compressed_app.zip input_app.apk
+          echo "ZIP Size:"
+          ls -lh compressed_app.zip
+
+      # 5. Create .TAR.XZ (High Compression Linux Standard)
+      - name: Compress to .TAR.XZ
+        run: |
+          # -c: create, -J: use xz compression, -f: file
+          # XZ_OPT=-9e forces extreme compression
+          export XZ_OPT=-9e
+          tar -cJf compressed_app.tar.xz input_app.apk
+          echo "XZ Size:"
+          ls -lh compressed_app.tar.xz
+
+      # 6. Create .TAR.ZST (Facebook Zstandard)
+      - name: Compress to .TAR.ZST
+        run: |
+          # --ultra -22 is the maximum compression level for Zstd
+          tar --use-compress-program="zstd --ultra -22" -cf compressed_app.tar.zst input_app.apk
+          echo "ZSTD Size:"
+          ls -lh compressed_app.tar.zst
+
+      # 7. Upload All 3 Files
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: All-Compressed-Versions
+          path: |
+            compressed_app.zip
+            compressed_app.tar.xz
+            compressed_app.tar.zst
+          retention-days: 1
