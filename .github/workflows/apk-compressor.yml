@@ -1,4 +1,4 @@
-name: APK Ultra Compressor
+name: APK Compressor (PPMd Extreme)
 
 on:
   workflow_dispatch:
@@ -31,26 +31,23 @@ jobs:
           
           # Verify download
           if [ ! -f "input_app.apk" ]; then
-            echo "Error: File download failed. Please check the URL."
+            echo "Error: File download failed."
             exit 1
           fi
           
           echo "Original File Size:"
           ls -lh input_app.apk
 
-      # 4. Compress (Ultra-Max Settings)
-      - name: Compress to .7z (Maximum Compression)
+      # 4. Compress using PPMd (Best for code/text)
+      - name: Compress to .7z (PPMd Algo)
         run: |
-          # Explanation of settings for maximum power:
-          # a           : Add to archive
-          # -t7z        : Create 7z file
-          # -m0=lzma2   : Use LZMA2 algorithm (Strongest modern algo)
-          # -mx=9       : Ultra compression level
-          # -md=64m     : 64MB Dictionary (Safe max for GitHub RAM)
-          # -mfb=64     : Word size 64 (Finds better data matches)
-          # -ms=on      : Solid compression (Treats file as one solid block)
+          # Explanation of PPMd settings:
+          # -m0=ppmd   : Uses PPMd algorithm instead of LZMA
+          # -mo=32     : Max memory order (pushes the algorithm to the limit)
+          # -mmem=128m : Allocates 128MB RAM for the model
+          # -mx=9      : Ultra compression level
           
-          7z a -t7z compressed_app.7z input_app.apk -m0=lzma2 -mx=9 -md=64m -mfb=64 -ms=on
+          7z a -t7z compressed_app.7z input_app.apk -m0=ppmd -mo=32 -mmem=128m -mx=9
           
           echo "Final Compressed Size:"
           ls -lh compressed_app.7z
@@ -59,6 +56,6 @@ jobs:
       - name: Upload Result
         uses: actions/upload-artifact@v4
         with:
-          name: Compressed-APK-7z
+          name: Compressed-APK-PPMd
           path: compressed_app.7z
           retention-days: 1
