@@ -1,4 +1,4 @@
-name: APK Compressor (PPMd Extreme)
+name: APK Compressor (LZMA2 Ultra)
 
 on:
   workflow_dispatch:
@@ -21,10 +21,7 @@ jobs:
       - name: Install 7-Zip
         run: |
           sudo apt-get update
-          # Try to install the modern '7zip' package, fallback to 'p7zip-full'
           sudo apt-get install -y 7zip || sudo apt-get install -y p7zip-full
-          # Verify version
-          7zz --help || 7z --help
 
       # 3. Download APK
       - name: Download APK
@@ -32,35 +29,25 @@ jobs:
           echo "Downloading from: ${{ inputs.apk_url }}"
           wget -O input_app.apk "${{ inputs.apk_url }}"
           
-          # Verify download
-          if [ ! -f "input_app.apk" ]; then
-            echo "Error: File download failed."
-            exit 1
-          fi
-          
-          # Display Original Size
-          ls -lh input_app.apk
+          # Capture Original Size
           echo "ORIGINAL_SIZE=$(stat -c%s input_app.apk)" >> $GITHUB_ENV
 
-      # 4. Compress using PPMd (Max Settings)
-      - name: Compress to .7z (PPMd Algo)
+      # 4. Compress using LZMA2 (The standard for Binary/Mixed files)
+      - name: Compress to .7z (LZMA2 Extreme)
         run: |
-          # Explanation of MAX settings:
-          # -m0=ppmd   : Forces PPMd algorithm (Best for text/code patterns)
-          # -mo=32     : Model Order 32 (Maximum allowed order)
-          # -mmem=256m : Memory 256MB (Absolute hard limit for PPMd in 7-Zip)
-          # -mx=9      : Ultra compression level
+          # Settings Explanation:
+          # -m0=lzma2  : The best algorithm for pre-compressed binaries (like APKs).
+          # -mx=9      : Ultra compression level.
+          # -md=512m   : Dictionary size 512MB. (Requires ~5-6GB RAM to compress, safe for GitHub runners).
+          # -mfb=273   : Maximum "Fast Bytes" (scans harder for matches).
+          # -ms=on     : Solid compression (crucial for size).
           
-          # Use '7zz' if installed (modern), else '7z'
           CMD="7z"
           if command -v 7zz &> /dev/null; then CMD="7zz"; fi
           
-          echo "Using compressor: $CMD"
+          $CMD a -t7z compressed_app.7z input_app.apk -m0=lzma2 -mx=9 -md=512m -mfb=273 -ms=on
           
-          $CMD a -t7z compressed_app.7z input_app.apk -m0=ppmd -mo=32 -mmem=256m -mx=9
-          
-          # Display Final Size
-          ls -lh compressed_app.7z
+          # Capture Final Size
           echo "COMPRESSED_SIZE=$(stat -c%s compressed_app.7z)" >> $GITHUB_ENV
 
       # 5. Calculate Reduction
@@ -68,20 +55,19 @@ jobs:
         run: |
           orig=${{ env.ORIGINAL_SIZE }}
           comp=${{ env.COMPRESSED_SIZE }}
-          ratio=$(echo "scale=2; ($comp / $orig) * 100" | bc)
-          saved=$(echo "scale=2; 100 - $ratio" | bc)
+          # Use basic bash math for ratio
+          ratio=$(( 100 * comp / orig ))
+          saved=$(( 100 - ratio ))
           
-          echo "=== COMPRESSION REPORT ==="
-          echo "Original:   $orig bytes"
-          echo "Compressed: $comp bytes"
-          echo "Ratio:      $ratio% of original"
-          echo "Saved:      $saved%"
-          echo "=========================="
+          echo "=== RESULT ==="
+          echo "Original:   $((orig / 1024 / 1024)) MB"
+          echo "Compressed: $((comp / 1024 / 1024)) MB"
+          echo "Size is $ratio% of original (Saved $saved%)"
 
       # 6. Upload Result
       - name: Upload Result
         uses: actions/upload-artifact@v4
         with:
-          name: Compressed-APK-PPMd
+          name: Compressed-APK-LZMA2
           path: compressed_app.7z
           retention-days: 3
