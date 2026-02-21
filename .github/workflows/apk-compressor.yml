@@ -17,17 +17,20 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. Install 7-Zip
+      # 2. Install 7-Zip (Modern)
       - name: Install 7-Zip
         run: |
           sudo apt-get update
-          sudo apt-get install -y p7zip-full
+          # Try to install the modern '7zip' package, fallback to 'p7zip-full'
+          sudo apt-get install -y 7zip || sudo apt-get install -y p7zip-full
+          # Verify version
+          7zz --help || 7z --help
 
       # 3. Download APK
       - name: Download APK
         run: |
-          echo "Downloading from: ${{ github.event.inputs.apk_url }}"
-          wget -O input_app.apk "${{ github.event.inputs.apk_url }}"
+          echo "Downloading from: ${{ inputs.apk_url }}"
+          wget -O input_app.apk "${{ inputs.apk_url }}"
           
           # Verify download
           if [ ! -f "input_app.apk" ]; then
@@ -35,27 +38,50 @@ jobs:
             exit 1
           fi
           
-          echo "Original File Size:"
+          # Display Original Size
           ls -lh input_app.apk
+          echo "ORIGINAL_SIZE=$(stat -c%s input_app.apk)" >> $GITHUB_ENV
 
-      # 4. Compress using PPMd (Best for code/text)
+      # 4. Compress using PPMd (Max Settings)
       - name: Compress to .7z (PPMd Algo)
         run: |
-          # Explanation of PPMd settings:
-          # -m0=ppmd   : Uses PPMd algorithm instead of LZMA
-          # -mo=32     : Max memory order (pushes the algorithm to the limit)
-          # -mmem=128m : Allocates 128MB RAM for the model
+          # Explanation of MAX settings:
+          # -m0=ppmd   : Forces PPMd algorithm (Best for text/code patterns)
+          # -mo=32     : Model Order 32 (Maximum allowed order)
+          # -mmem=256m : Memory 256MB (Absolute hard limit for PPMd in 7-Zip)
           # -mx=9      : Ultra compression level
           
-          7z a -t7z compressed_app.7z input_app.apk -m0=ppmd -mo=32 -mmem=128m -mx=9
+          # Use '7zz' if installed (modern), else '7z'
+          CMD="7z"
+          if command -v 7zz &> /dev/null; then CMD="7zz"; fi
           
-          echo "Final Compressed Size:"
+          echo "Using compressor: $CMD"
+          
+          $CMD a -t7z compressed_app.7z input_app.apk -m0=ppmd -mo=32 -mmem=256m -mx=9
+          
+          # Display Final Size
           ls -lh compressed_app.7z
+          echo "COMPRESSED_SIZE=$(stat -c%s compressed_app.7z)" >> $GITHUB_ENV
 
-      # 5. Upload Result
+      # 5. Calculate Reduction
+      - name: Compression Report
+        run: |
+          orig=${{ env.ORIGINAL_SIZE }}
+          comp=${{ env.COMPRESSED_SIZE }}
+          ratio=$(echo "scale=2; ($comp / $orig) * 100" | bc)
+          saved=$(echo "scale=2; 100 - $ratio" | bc)
+          
+          echo "=== COMPRESSION REPORT ==="
+          echo "Original:   $orig bytes"
+          echo "Compressed: $comp bytes"
+          echo "Ratio:      $ratio% of original"
+          echo "Saved:      $saved%"
+          echo "=========================="
+
+      # 6. Upload Result
       - name: Upload Result
         uses: actions/upload-artifact@v4
         with:
           name: Compressed-APK-PPMd
           path: compressed_app.7z
-          retention-days: 1
+          retention-days: 3
